@@ -1,0 +1,3 @@
+[submodule "gnunet-nim"]
+	path = gnunet-nim
+	url = https://gnunet.org/git/gnunet-nim.git
