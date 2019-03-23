@@ -1,0 +1,6 @@
+# Ignore binary
+groupchat
+
+
+# Ignore `bin` dir
+*/bin/*
