@@ -4,8 +4,17 @@ GNUnet Groupchat
 
 This is a simple client-server chat system, using CADET.
 
+Installation
+============
+
+Requirements
+------------
+
+* GNUnet >= 0.11.0 (https://gnunet.org)
+* Nim >= 0.18.0    (https://nim-lang.org)
+
 Install
-=======
+-------
 
 `git submodule sync && git submodule update --init --recursive`
 `make`
