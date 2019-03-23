@@ -1,6 +1,8 @@
 # Ignore binary
 groupchat
 
-
 # Ignore `bin` dir
 */bin/*
+
+# Ignore `nimcache` dir
+nimcache/
