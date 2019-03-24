@@ -1,5 +1,6 @@
-# Ignore binary
+# Ignore binaries
 groupchat
+groupchat_nimbox
 
 # Ignore `bin` dir
 */bin/*
