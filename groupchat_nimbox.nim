@@ -143,7 +143,7 @@ proc processInputMessages(channel: ref CadetChannel, ch: SharedChannel[ChannelVa
     let channelValue = await readFromChannel(ch)
     if (channelValue.stop):
       return
-    if nick.isNil():
+    if nick == "":
       channel.sendMessage(channelValue.message)
     else:
       channel.sendMessage(nick&": "&channelValue.message)
@@ -154,7 +154,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
   let cadet = await gnunetApp.initCadet()
   var chat = new(Chat)
   chat.channels = newSeq[ref CadetChannel]()
-  if not server.isNil():
+  if server != "":
     nb = newNimbox()
     var inputChannel = newSharedChannel[ChannelValue]()
     let channel = cadet.createChannel(server, port)
