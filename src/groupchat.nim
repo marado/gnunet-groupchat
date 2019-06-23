@@ -1,7 +1,7 @@
 import gnunet_nim
 import gnunet_nim/cadet
 
-import asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os
+import asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os, threadpool
 
 type Chat = object
   channels: seq[ref CadetChannel]
@@ -30,22 +30,24 @@ proc processServerMessages(channel: ref CadetChannel) {.async.} =
       return
     echo getDateStr()," ",getClockStr()," ",message
 
-proc processInput(inputFile: AsyncFile, channel: ref CadetChannel) {.async.} =
+proc processInput(inputLines: FutureStream[string],
+                  channel: ref CadetChannel) {.async.} =
   while true:
-    let input = await inputFile.readline()
+    let (hasData, input) = await inputLines.read()
+    if not hasData:
+      break
     channel.sendMessage(input)
 
 proc firstTask(gnunetApp: ref GnunetApplication,
                server: string,
-               port: string) {.async.} =
+               port: string,
+               inputLines: FutureStream[string]) {.async.} =
   let cadet = await gnunetApp.initCadet()
   var chat = new(Chat)
   chat.channels = newSeq[ref CadetChannel]()
   if server != "":
-    let inputFile = openAsync("/dev/stdin", fmRead)
     let channel = cadet.createChannel(server, port)
-    await processServerMessages(channel) or processInput(inputFile, channel)
-    inputFile.close()
+    await processServerMessages(channel) or processInput(inputLines, channel)
   else:
     let cadetPort = cadet.openPort(port)
     while true:
@@ -89,9 +91,14 @@ proc main() =
   if server == "":
     echo "Entering server mode."
   var gnunetApp = initGnunetApplication(configfile)
-  asyncCheck firstTask(gnunetApp, server, port)
+  var stdinFlowVar = spawn stdin.readLine()
+  let inputLines = newFutureStream[string]("main")
+  asyncCheck firstTask(gnunetApp, server, port, inputLines)
   while hasPendingOperations():
     poll(gnunetApp.millisecondsUntilTimeout())
+    if stdinFlowVar.isReady():
+      waitFor inputLines.write(^stdinFlowVar)
+      stdinFlowVar = spawn stdin.readline()
     gnunetApp.doWork()
   echo "Quitting."
 
