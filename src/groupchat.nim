@@ -1,6 +1,5 @@
 import gnunet_nim
 import gnunet_nim/cadet
-import logging
 
 import asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os
 
@@ -32,43 +31,20 @@ proc processServerMessages(channel: ref CadetChannel) {.async.} =
     echo getDateStr()," ",getClockStr()," ",message
 
 proc processInput(inputFile: AsyncFile, channel: ref CadetChannel) {.async.} =
-  let input = await inputFile.readline()
-  channel.sendMessage(input)
+  while true:
+    let input = await inputFile.readline()
+    channel.sendMessage(input)
 
 proc firstTask(gnunetApp: ref GnunetApplication,
                server: string,
                port: string) {.async.} =
   let cadet = await gnunetApp.initCadet()
-  var inputFile = openAsync("/dev/stdin", fmRead)
-  debug("First Task!")
   var chat = new(Chat)
   chat.channels = newSeq[ref CadetChannel]()
   if server != "":
-    debug("Opening stdin")
-    debug("Opened")
+    let inputFile = openAsync("/dev/stdin", fmRead)
     let channel = cadet.createChannel(server, port)
-    debug("Awaiting IO")
-    var messagesFuture = channel.messages.read()
-    var inputFuture = inputFile.readline()
-    while true:
-      var hasData = false
-      var message = ""
-      debug("Awaiting events")
-      await messagesFuture or inputFuture
-      if inputFuture.finished():
-        debug("Got input")
-        channel.sendMessage(inputFuture.read())
-        inputFuture = inputFile.readline()
-      elif messagesFuture.finished():
-        debug("Got message")
-        (hasData, message) = messagesFuture.read()
-        if hasData:
-          chat.publish(message = message, sender = channel)
-        messagesFuture = channel.messages.read()
-      else:
-        debug("Fin")
-        break
-      debug("While true")
+    await processServerMessages(channel) or processInput(inputFile, channel)
     inputFile.close()
   else:
     let cadetPort = cadet.openPort(port)
@@ -93,8 +69,6 @@ proc firstTask(gnunetApp: ref GnunetApplication,
 proc main() =
   var server, port, configfile: string
   var optParser = initOptParser()
-  var consoleLog = newConsoleLogger()
-  addHandler(consoleLog)
   for kind, key, value in optParser.getopt():
     case kind
     of cmdLongOption, cmdShortOption:
@@ -117,11 +91,8 @@ proc main() =
   var gnunetApp = initGnunetApplication(configfile)
   asyncCheck firstTask(gnunetApp, server, port)
   while hasPendingOperations():
-    debug("Processing OPs")
     poll(gnunetApp.millisecondsUntilTimeout())
-    debug("polled, start working")
     gnunetApp.doWork()
-    debug("done")
   echo "Quitting."
 
 main()
