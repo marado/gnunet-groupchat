@@ -16,8 +16,13 @@ Requirements
 Install
 -------
 
-`git submodule sync && git submodule update --init --recursive`
 `make`
+
+or
+
+git submodule update --init --recursive
+cd gnunet_nim && nimble install && cd ..
+nimble install
 
 Running
 =======
