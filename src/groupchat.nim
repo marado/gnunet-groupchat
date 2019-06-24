@@ -15,7 +15,7 @@ proc asyncReadline(): Future[string] =
   let flowVar = spawn readlineBackground(event)
   proc callback(fd: AsyncFD): bool =
     future.complete(^flowVar)
-    false
+    true
   addEvent(event, callback)
   return future
 
