@@ -1,10 +1,23 @@
 import gnunet_nim
 import gnunet_nim/cadet
 
-import asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os
+import asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os, threadpool
 
 type Chat = object
   channels: seq[ref CadetChannel]
+
+proc asyncReadline(): Future[string] =
+  let event = newAsyncEvent()
+  let future = newFuture[string]("asyncReadline")
+  proc readlineBackground(event: AsyncEvent): string =
+    result = stdin.readline()
+    event.trigger()
+  let flowVar = spawn readlineBackground(event)
+  proc callback(fd: AsyncFD): bool =
+    future.complete(^flowVar)
+    false
+  addEvent(event, callback)
+  return future
 
 proc publish(chat: ref Chat, message: string, sender: ref CadetChannel = nil) =
   let message =
@@ -30,9 +43,9 @@ proc processServerMessages(channel: ref CadetChannel) {.async.} =
       return
     echo getDateStr()," ",getClockStr()," ",message
 
-proc processInput(inputFile: AsyncFile, channel: ref CadetChannel) {.async.} =
+proc processInput(channel: ref CadetChannel) {.async.} =
   while true:
-    let input = await inputFile.readline()
+    let input = await asyncReadline()
     channel.sendMessage(input)
 
 proc firstTask(gnunetApp: ref GnunetApplication,
@@ -42,10 +55,8 @@ proc firstTask(gnunetApp: ref GnunetApplication,
   var chat = new(Chat)
   chat.channels = newSeq[ref CadetChannel]()
   if server != "":
-    let inputFile = openAsync("/dev/stdin", fmRead)
     let channel = cadet.createChannel(server, port)
-    await processServerMessages(channel) or processInput(inputFile, channel)
-    inputFile.close()
+    await processServerMessages(channel) or processInput(channel)
   else:
     let cadetPort = cadet.openPort(port)
     while true:
@@ -90,7 +101,7 @@ proc main() =
     echo "Entering server mode."
   var gnunetApp = initGnunetApplication(configfile)
   asyncCheck firstTask(gnunetApp, server, port)
-  while hasPendingOperations():
+  while gnunetApp.isAlive():
     poll(gnunetApp.millisecondsUntilTimeout())
     gnunetApp.doWork()
   echo "Quitting."
