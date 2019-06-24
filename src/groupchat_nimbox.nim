@@ -1,38 +1,11 @@
 import gnunet_nim
 import gnunet_nim/cadet
-import threadpool, nimbox, asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os, deques, events
-
-type SharedChannel[T] = ptr Channel[T]
-
-type ChannelValue = object
-  stop: bool
-  message: string
+import nimbox, threadpool, asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os, deques, events
 
 var nick: string
 
 type Chat = object
   channels: seq[ref CadetChannel]
-
-var nb: NimBox
-
-proc newSharedChannel[T](): SharedChannel[T] =
-  result = cast[SharedChannel[T]](allocShared0(sizeof(Channel[T])))
-  open(result[])
-
-proc close[T](ch: var SharedChannel[T]) =
-  close(ch[])
-  deallocShared(ch)
-  ch = nil
-
-proc send[T](ch: SharedChannel[T], content: T) =
-  ch[].send(content)
-
-
-proc recv[T](ch: SharedChannel[T]): T =
-  result = ch[].recv
-
-proc available[T](ch: SharedChannel[T]): bool =
-  result = ch[].peek > 0
 
 proc modsContainsCrtl(mods: seq[Modifier]): bool =
   for modifier in mods:
@@ -40,50 +13,53 @@ proc modsContainsCrtl(mods: seq[Modifier]): bool =
       return true
   return false
 
-proc getInputLine(nb: NimBox): ChannelValue  =
-  var line, str, clear = ""
-  nb.print(0,2, "-------------------------> ")
-  nb.cursor = (27, 2)
-  nb.present()
-  var channelValue: ChannelValue
-  channelValue.stop = false
-  while true:
-    let evt = nb.peekEvent(1000)
-    case evt.kind:
-      of EventType.Key:
-        if evt.sym == Symbol.Enter:
-          nb.print(27, 2, clear)
-          #future.complete(line)
-          #line = ""
-          #str = ""
-          #clear = ""
-          nb.present()
-          break
-          #i=i+1
-        elif  evt.sym != Symbol.Backspace and modsContainsCrtl(evt.mods):
-          channelValue.stop = true
-          break
-        else:
-          var ch : char = evt.ch
-          if evt.sym == Symbol.Space:
-            ch = cast[char](' ')
-          if evt.sym == Symbol.Backspace:
-               line.delete(line.len(),line.len())
-               str.delete(str.len(), str.len())
-               nb.print(27, 2, clear)
-          else:
-            line.add(ch)
-            str.add(ch)
-          nb.cursor = (27+str.len, 2)
-          clear.add(" ")
-          nb.print(0,2, "-------------------------> "&str)
-          #if i == 10:
-              #i = 0
-          nb.present()
-      else: discard
-  #return future
-  channelValue.message = line
-  return channelValue
+proc processEvent(nb: NimBox,
+                  event: Event,
+                  line: var string,
+                  str: var string,
+                  clear: var string): bool =
+  result = false
+  if event.kind != EventType.Key:
+    return
+  if event.sym == Symbol.Enter:
+    nb.print(27, 2, clear)
+    nb.present()
+    result = true
+  elif event.sym != Symbol.Backspace and modsContainsCrtl(event.mods):
+    result = true
+  else:
+    var ch : char = event.ch
+    if event.sym == Symbol.Space:
+      ch = cast[char](' ')
+    if event.sym == Symbol.Backspace:
+         line.delete(line.len(),line.len())
+         str.delete(str.len(), str.len())
+         nb.print(27, 2, clear)
+    else:
+      line.add(ch)
+      str.add(ch)
+    nb.cursor = (27+str.len, 2)
+    clear.add(" ")
+    nb.print(0,2, "-------------------------> "&str)
+    nb.present()
+
+proc asyncReadline(nb: NimBox): Future[string] =
+  let asyncEvent = newAsyncEvent()
+  let future = newFuture[string]("asyncPeekEvent")
+  proc readlineBackground(nb: NimBox, asyncEvent: AsyncEvent): string =
+    var line, str, clear = ""
+    while true:
+      let event = nb.pollEvent()
+      if processEvent(nb, event, line, str, clear):
+        result = line
+        asyncEvent.trigger()
+        break
+  let flowVar = spawn readlineBackground(nb, asyncEvent)
+  proc callback(fd: AsyncFD): bool =
+    future.complete(^flowVar)
+    true
+  addEvent(asyncEvent, callback)
+  return future
 
 proc publish(chat: ref Chat, message: string, sender: ref CadetChannel = nil) =
   let message =
@@ -101,7 +77,7 @@ proc processClientMessages(channel: ref CadetChannel,
       break
     chat.publish(message = message, sender = channel)
 
-proc processServerMessages(channel: ref CadetChannel) {.async.} =
+proc processServerMessages(nb: NimBox, channel: ref CadetChannel) {.async.} =
   var messages = initDeque[string]()
   while true:
     let (hasData, message) = await channel.messages.read()
@@ -113,40 +89,12 @@ proc processServerMessages(channel: ref CadetChannel) {.async.} =
     messages.addFirst(getDateStr()&" "&getClockStr()&" "&message)
     for i, value in messages.pairs():
       nb.print(0, i+4, value)
-    #nb.print(0, 2, getDateStr()&" "&getClockStr()&" "&message)
     nb.present()
 
-proc processInput(ev: AsyncEvent, ch: SharedChannel[ChannelValue]) =
-  #while true:
-  let channelValue = getInputLine(nb)
-  ch.send(channelValue)
-  ev.trigger()
-
-proc asyncReadFromChannel(ch: SharedChannel[ChannelValue], cb: proc(channelValue: ChannelValue)) =
-  var event = newAsyncEvent()
-  proc eventCallback(fd: AsyncFd): bool =
-    cb(ch.recv())
-    true
-  addEvent(event, eventCallback)
-  spawn processInput(event, ch)
-
-proc readFromChannel(ch: SharedChannel[ChannelValue]): Future[ChannelValue] =
-  let future = newFuture[ChannelValue]("readFromChannel")
-  proc callback(channelValue: ChannelValue) =
-    future.complete(channelValue)
-  asyncReadFromChannel(ch, callback)
-  return future
-
-
-proc processInputMessages(channel: ref CadetChannel, ch: SharedChannel[ChannelValue]) {.async.} =
+proc processInput(nb: NimBox, channel: ref CadetChannel) {.async.} =
   while true:
-    let channelValue = await readFromChannel(ch)
-    if (channelValue.stop):
-      return
-    if nick == "":
-      channel.sendMessage(channelValue.message)
-    else:
-      channel.sendMessage(nick&": "&channelValue.message)
+    let input = await asyncReadline(nb)
+    channel.sendMessage(input)
 
 proc firstTask(gnunetApp: ref GnunetApplication,
                server: string,
@@ -155,11 +103,9 @@ proc firstTask(gnunetApp: ref GnunetApplication,
   var chat = new(Chat)
   chat.channels = newSeq[ref CadetChannel]()
   if server != "":
-    nb = newNimbox()
-    var inputChannel = newSharedChannel[ChannelValue]()
+    let nb = newNimbox()
     let channel = cadet.createChannel(server, port)
-    await processServerMessages(channel) or processInputMessages(channel, inputChannel)
-    close(inputChannel)
+    await processServerMessages(nb, channel) or processInput(nb, channel)
     nb.shutdown()
     echo "quitting"
     quit 0
@@ -180,6 +126,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
         let channel = channel
         let peerId = peerId
         proc channelDisconnected(future: Future[void]) =
+          echo "channelDisconnected"
           chat.channels.delete(chat.channels.find(channel))
           chat.publish(message = peerId & " left\n")
         processClientMessages(channel, chat).addCallback(channelDisconnected)
@@ -199,7 +146,7 @@ proc main() =
       assert(false)
   var gnunetApp = initGnunetApplication(configfile)
   asyncCheck firstTask(gnunetApp, server, port)
-  while hasPendingOperations():
+  while gnunetApp.isAlive():
     poll(gnunetApp.millisecondsUntilTimeout())
     gnunetApp.doWork()
 
