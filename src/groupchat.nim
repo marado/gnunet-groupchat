@@ -78,8 +78,10 @@ proc firstTask(gnunetApp: ref GnunetApplication,
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =
+  var home = getEnv ("HOME")
   var server, port, configfile: string
   var optParser = initOptParser()
+
   for kind, key, value in optParser.getopt():
     case kind
     of cmdLongOption, cmdShortOption:
@@ -89,22 +91,34 @@ proc main() =
       of "port", "p": port = value
     else:
       assert(false)
-  if configfile == "":
-    echo "I need a config file to use."
-    echo "  Add -c=<gnunet.conf>"
-    return
+
+  # Check for existing config
+  if not (fileExists (configfile)):
+    if fileExists (home & "/.config/gnunet.conf"):
+      configfile = home & "/.config/gnunet.conf"
+    elif fileExists ("/etc/gnunet.conf"):
+      configfile = "/etc/gnunet.conf"
+    else:
+      echo "I need a config file to use."
+      echo "  Add -c=<gnunet.conf>"
+      return
+
   if port == "":
     echo "I need a shared secret port to use."
     echo "  Add -p=<sharedsecret>"
     return
+
   if server == "":
     echo "Entering server mode."
+
   var gnunetApp = initGnunetApplication(configfile)
   asyncCheck firstTask(gnunetApp, server, port)
+  # Event loop
   while gnunetApp.isAlive():
     poll(gnunetApp.millisecondsUntilTimeout())
     gnunetApp.doWork()
+    
   echo "Quitting."
 
 main()
-GC_fullCollect()
+GC_fullCollect() # Forces a full garbage collection pass
