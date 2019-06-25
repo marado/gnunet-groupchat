@@ -5,7 +5,7 @@ author        = "secushare"
 description   = "A chat application using GNUnet"
 license       = "GPL-3.0"
 srcDir        = "src"
-bin           = @["groupchat"]
+bin           = @["groupchat","groupchat_nimbox"]
 
 
 
@@ -13,3 +13,4 @@ bin           = @["groupchat"]
 
 requires "nim >= 0.19.0"
 requires "gnunet_nim >= 0.1.0"
+requires "nimbox"
