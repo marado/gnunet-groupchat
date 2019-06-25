@@ -1,6 +1,8 @@
 import gnunet_nim
 import gnunet_nim/cadet
-import nimbox, threadpool, asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os, deques, events
+import
+  nimbox, threadpool, asyncdispatch, asyncfile, parseopt, strutils, sequtils,
+  times, os, deques, events, options
 
 var nick: string
 
@@ -13,52 +15,56 @@ proc modsContainsCrtl(mods: seq[Modifier]): bool =
       return true
   return false
 
-proc processEvent(nb: NimBox,
-                  event: Event,
-                  line: var string,
-                  str: var string,
-                  clear: var string): bool =
-  result = false
-  if event.kind != EventType.Key:
-    return
-  if event.sym == Symbol.Enter:
-    nb.print(27, 2, clear)
-    nb.present()
-    result = true
-  elif event.sym != Symbol.Backspace and modsContainsCrtl(event.mods):
-    result = true
-  else:
-    var ch : char = event.ch
-    if event.sym == Symbol.Space:
-      ch = cast[char](' ')
-    if event.sym == Symbol.Backspace:
-         line.delete(line.len(),line.len())
-         str.delete(str.len(), str.len())
-         nb.print(27, 2, clear)
+proc processInput(nb: NimBox): Option[string] =
+  var line, str, clear = ""
+  while true:
+    let event = nb.pollEvent()
+    if event.kind != EventType.Key:
+      continue
+    if event.sym == Symbol.Enter:
+      nb.print(27, 2, clear)
+      nb.present()
+      return some(line)
+    elif event.sym != Symbol.Backspace and modsContainsCrtl(event.mods):
+      return none(string)
     else:
-      line.add(ch)
-      str.add(ch)
-    nb.cursor = (27+str.len, 2)
-    clear.add(" ")
-    nb.print(0,2, "-------------------------> "&str)
-    nb.present()
+      var ch : char = event.ch
+      if event.sym == Symbol.Space:
+        ch = cast[char](' ')
+      if event.sym == Symbol.Backspace:
+           line.delete(line.len(),line.len())
+           str.delete(str.len(), str.len())
+           nb.print(27, 2, clear)
+      else:
+        line.add(ch)
+        str.add(ch)
+      nb.cursor = (27+str.len, 2)
+      clear.add(" ")
+      nb.print(0,2, "-------------------------> "&str)
+      nb.present()
 
 proc asyncReadline(nb: NimBox): Future[string] =
-  let asyncEvent = newAsyncEvent()
+  let readlineEvent = newAsyncEvent()
+  let quitEvent = newAsyncEvent()
   let future = newFuture[string]("asyncPeekEvent")
-  proc readlineBackground(nb: NimBox, asyncEvent: AsyncEvent): string =
-    var line, str, clear = ""
-    while true:
-      let event = nb.pollEvent()
-      if processEvent(nb, event, line, str, clear):
-        result = line
-        asyncEvent.trigger()
-        break
-  let flowVar = spawn readlineBackground(nb, asyncEvent)
-  proc callback(fd: AsyncFD): bool =
+  proc readlineBackground(nb: NimBox,
+                          readlineEvent: AsyncEvent,
+                          quitEvent: AsyncEvent): string =
+    let line = processInput(nb)
+    if line.isSome():
+      result = line.get()
+      readlineEvent.trigger()
+    else:
+      quitEvent.trigger()
+  let flowVar = spawn readlineBackground(nb, readlineEvent, quitEvent)
+  proc readlineCallback(fd: AsyncFD): bool =
     future.complete(^flowVar)
     true
-  addEvent(asyncEvent, callback)
+  proc quitCallback(fd: AsyncFD): bool =
+    future.fail(new(IOError))
+    true
+  addEvent(readlineEvent, readlineCallback)
+  addEvent(quitEvent, quitCallback)
   return future
 
 proc publish(chat: ref Chat, message: string, sender: ref CadetChannel = nil) =
@@ -93,8 +99,11 @@ proc processServerMessages(nb: NimBox, channel: ref CadetChannel) {.async.} =
 
 proc processInput(nb: NimBox, channel: ref CadetChannel) {.async.} =
   while true:
-    let input = await asyncReadline(nb)
-    channel.sendMessage(input)
+    try:
+      let input = await asyncReadline(nb)
+      channel.sendMessage(input)
+    except IOError:
+      break
 
 proc firstTask(gnunetApp: ref GnunetApplication,
                server: string,
@@ -126,7 +135,6 @@ proc firstTask(gnunetApp: ref GnunetApplication,
         let channel = channel
         let peerId = peerId
         proc channelDisconnected(future: Future[void]) =
-          echo "channelDisconnected"
           chat.channels.delete(chat.channels.find(channel))
           chat.publish(message = peerId & " left\n")
         processClientMessages(channel, chat).addCallback(channelDisconnected)
