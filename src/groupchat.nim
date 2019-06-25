@@ -78,8 +78,8 @@ proc firstTask(gnunetApp: ref GnunetApplication,
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =
-  var home = getEnv ("HOME")
   var server, port, configfile: string
+  var home = getEnv("HOME")
   var optParser = initOptParser()
 
   for kind, key, value in optParser.getopt():
@@ -93,10 +93,10 @@ proc main() =
       assert(false)
 
   # Check for existing config
-  if not (fileExists (configfile)):
-    if fileExists (home & "/.config/gnunet.conf"):
+  if not (fileExists(configfile)):
+    if fileExists(home & "/.config/gnunet.conf"):
       configfile = home & "/.config/gnunet.conf"
-    elif fileExists ("/etc/gnunet.conf"):
+    elif fileExists("/etc/gnunet.conf"):
       configfile = "/etc/gnunet.conf"
     else:
       echo "I need a config file to use."
