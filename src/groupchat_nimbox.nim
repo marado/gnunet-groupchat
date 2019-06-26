@@ -141,6 +141,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
 
 proc main() =
   var server, port, configfile: string
+  var home = getEnv("HOME")
   var optParser = initOptParser()
   for kind, key, value in optParser.getopt():
     case kind
@@ -152,6 +153,26 @@ proc main() =
       of "nick", "n": nick = value
     else:
       assert(false)
+
+  # Check for existing config
+  if not (fileExists(configfile)):
+    if fileExists(home & "/.config/gnunet.conf"):
+      configfile = home & "/.config/gnunet.conf"
+    elif fileExists("/etc/gnunet.conf"):
+      configfile = "/etc/gnunet.conf"
+    else:
+      echo "I need a config file to use."
+      echo "  Add -c=<gnunet.conf>"
+      return
+
+  if port == "":
+    echo "I need a shared secret port to use."
+    echo "  Add -p=<sharedsecret>"
+    return
+
+  if server == "":
+    echo "Entering server mode."
+
   var gnunetApp = initGnunetApplication(configfile)
   asyncCheck firstTask(gnunetApp, server, port)
   while gnunetApp.isAlive():
