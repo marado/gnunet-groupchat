@@ -1,80 +1,116 @@
-import gnunet_nim
-import gnunet_nim/cadet
+import gnunet_nim, gnunet_nim/cadet, message, tui, asyncdispatch, options,
+       times, os, parseopt, terminal, threadpool, sequtils
 
-import asyncdispatch, asyncfile, parseopt, strutils, sequtils, times, os, threadpool
+type Chat* = ref object
+  channels*: seq[ref CadetChannel]
 
-type Chat = object
-  channels: seq[ref CadetChannel]
+proc newChat*(): Chat =
+  Chat(channels: newSeq[ref CadetChannel]())
 
-proc asyncReadline(): Future[string] =
-  let event = newAsyncEvent()
-  let future = newFuture[string]("asyncReadline")
-  proc readlineBackground(event: AsyncEvent): string =
-    result = stdin.readline()
-    event.trigger()
-  let flowVar = spawn readlineBackground(event)
-  proc callback(fd: AsyncFD): bool =
-    future.complete(^flowVar)
-    true
-  addEvent(event, callback)
-  return future
-
-proc publish(chat: ref Chat, message: string, sender: ref CadetChannel = nil) =
-  let message =
-    if sender.isNil(): message.strip(leading = false)
-    else: "[" & sender.peer.peerId() & "] " & message.strip(leading = false)
-  echo getDatestr(), " ", getClockStr(), " ", message
+proc publish*(chat: Chat, message: Message) =
   for c in chat.channels:
-    c.sendMessage(message)
+    c.sendMessage($message)
 
 proc processClientMessages(channel: ref CadetChannel,
-                           chat: ref Chat) {.async.} =
+                           chat: Chat) {.async.} =
   while true:
     let (hasData, message) = await channel.messages.read()
     if not hasData:
       break
-    chat.publish(message = message, sender = channel)
+    let parsed = parse(message)
+    if parsed.isSome():
+      let parsed = parsed.get()
+      if parsed.kind == Talk and parsed.sender == channel.peer.peerId():
+        chat.publish(parsed)
 
-proc processServerMessages(channel: ref CadetChannel) {.async.} =
+proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
   while true:
     let (hasData, message) = await channel.messages.read()
     if not hasData:
       shutdownGnunetApplication()
       return
-    echo getDateStr()," ",getClockStr()," ",message
+    let parsed = parse(message)
+    if parsed.isSome():
+      let parsed = parsed.get()
+      case parsed.kind
+      of Talk:
+        let title = parsed.sender &
+                    " " &
+                    parsed.timestamp.fromUnix().local().getClockStr()
+        tui.conversationTile.addElement("", title, parsed.content)
+        tui.inputTile.present()
+      of Join:
+        tui.participantsTile.addElement(parsed.who,
+                                        parsed.who)
+        tui.inputTile.present()
+      of Leave:
+        tui.participantsTile.deleteElement(parsed.who)
+        tui.inputTile.present()
+      of Info:
+        for p in parsed.participants:
+          tui.participantsTile.addElement(p, p)
+        tui.inputTile.present()
 
-proc processInput(channel: ref CadetChannel) {.async.} =
+proc processInput(channel: ref CadetChannel, tui: Tui) {.async.} =
   while true:
-    let input = await asyncReadline()
-    channel.sendMessage(input)
+    let ch = await asyncGetch()
+    case ch:
+    of '\r': # Return
+      if tui.inputTile.focussed:
+        let message = Message(kind: Talk,
+                              timestamp: getTime().toUnix(),
+                              sender: channel.peer.peerId(),
+                              content: tui.inputTile.input)
+        channel.sendMessage($message)
+        tui.inputTile.reset()
+    of '\x03': # Ctrl-C
+      break
+    of '\t': # Tab
+      tui.focusNext()
+    of '\x13': # Ctrl-s
+      tui.writeInfoBar("select channel not implemented")
+    of '\x0e': # Ctrl-n
+      tui.writeInfoBar("new channel not implemented")
+    of '\x05': # Ctrl-e
+      tui.writeInfoBar("edit title not implemented")
+    else:
+      tui.processInput(ch)
+  shutdownGnunetApplication()
 
 proc firstTask(gnunetApp: ref GnunetApplication,
                server: string,
                port: string) {.async.} =
   let cadet = await gnunetApp.initCadet()
-  var chat = new(Chat)
-  chat.channels = newSeq[ref CadetChannel]()
   if server != "":
     let channel = cadet.createChannel(server, port)
-    await processServerMessages(channel) or processInput(channel)
+    let tui = initTui()
+    await processServerMessages(channel, tui) or processInput(channel, tui)
+    tui.clean()
   else:
+    var chat = newChat()
     let cadetPort = cadet.openPort(port)
     while true:
       let (hasChannel, channel) = await cadetPort.channels.read()
       if not hasChannel:
         break
       let peerId = channel.peer.peerId()
-      chat.publish(message = peerId & " joined\n")
-      let listParticipants =
-        chat.channels.map(proc(c: ref CadetChannel): string = c.peer.peerId)
-      channel.sendMessage("Welcome " & peerId & "! participants: " & $listParticipants)
+      chat.publish(Message(kind: Join,
+                           timestamp: getTime().toUnix(),
+                           who: peerId))
       chat.channels.add(channel)
+      let participants =
+        chat.channels.map(proc(c: ref CadetChannel): string = c.peer.peerId())
+      channel.sendMessage($Message(kind: Info,
+                                   timestamp: getTime().toUnix(),
+                                   participants: participants))
       closureScope:
         let channel = channel
         let peerId = peerId
         proc channelDisconnected(future: Future[void]) =
+          chat.publish(Message(kind: Leave,
+                               timestamp: getTime().toUnix(),
+                               who: peerId))
           chat.channels.delete(chat.channels.find(channel))
-          chat.publish(message = peerId & " left\n")
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =
@@ -113,12 +149,16 @@ proc main() =
 
   var gnunetApp = initGnunetApplication(configfile)
   asyncCheck firstTask(gnunetApp, server, port)
+  
   # Event loop
   while gnunetApp.isAlive():
     poll(gnunetApp.millisecondsUntilTimeout())
     gnunetApp.doWork()
-    
-  echo "Quitting."
+    stdout.flushFile()
 
-main()
-GC_fullCollect() # Forces a full garbage collection pass
+  echo "quitting"
+  stdout.flushFile()
+  stdin.flushFile()
+
+when isMainModule:
+  main()
