@@ -1,5 +1,5 @@
 import gnunet_nim, gnunet_nim/cadet, message, tui, asyncdispatch, options,
-       times, os, parseopt, terminal, threadpool, sequtils
+       times, os, parseopt, sequtils
 
 type Chat* = ref object
   channels*: seq[ref CadetChannel]
