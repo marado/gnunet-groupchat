@@ -1,5 +1,5 @@
 import tile, terminal, strutils, sequtils
-when NimMinor >= 20:
+when (NimMajor, NimMinor) >= (0, 20):
   import std/wordwrap
 else:
   proc wrapWords(s: string, maxLineWidth: int): string = wordWrap(s, maxLineWidth)
