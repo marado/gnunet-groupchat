@@ -36,7 +36,7 @@ proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
       of Talk:
         let title = parsed.sender &
                     " " &
-                    parsed.timestamp.fromUnix().local().getClockStr()
+                    parsed.timestamp.fromUnix().local().format("HH:mm:ss")
         tui.conversationTile.addElement("", title, parsed.content)
         tui.inputTile.present()
       of Join:
@@ -114,7 +114,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =
-  var home = getEnv ("HOME")
+  var home = getEnv("HOME")
   var server, port, configfile: string
   var optParser = initOptParser()
 
@@ -129,10 +129,10 @@ proc main() =
       assert(false)
 
   # Check for existing config
-  if not (fileExists (configfile)):
-    if fileExists (home & "/.config/gnunet.conf"):
+  if not (fileExists(configfile)):
+    if fileExists(home & "/.config/gnunet.conf"):
       configfile = home & "/.config/gnunet.conf"
-    elif fileExists ("/etc/gnunet.conf"):
+    elif fileExists("/etc/gnunet.conf"):
       configfile = "/etc/gnunet.conf"
     else:
       echo "I need a config file to use."

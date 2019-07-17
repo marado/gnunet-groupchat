@@ -1,4 +1,9 @@
-import tile, terminal, std/wordwrap, strutils, sequtils
+import tile, terminal, strutils, sequtils
+when NimMinor >= 20:
+  import std/wordwrap
+else:
+  proc wrapWords(s: string, maxLineWidth: int): string = wordWrap(s, maxLineWidth)
+
 export tile
 
 # ListTile
