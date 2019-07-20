@@ -19,10 +19,13 @@ proc processClientMessages(channel: ref CadetChannel,
       break
     let parsed = parse(message)
     if parsed.isSome():
+      echo("message from ", channel.peer.peerId(), ": ", message)
       let parsed = parsed.get()
       if parsed.kind == Talk:
         parsed.sender = channel.peer.peerId()
         chat.publish(parsed)
+    else:
+      echo("invalid message from ", channel.peer.peerId())
 
 proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
   while true:
