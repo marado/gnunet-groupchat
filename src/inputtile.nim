@@ -30,11 +30,11 @@ method present*(this: InputTile) =
 
 method processInput*(this: InputTile, ch: char) =
   case ch
-  of '\b': # Backspace
+  of '\x08', '\x7f': # Backspace
     let length = this.input.runeLen()
     if length > 0:
       this.input = this.input.truncateRight(length - 1)
-  of ' ' .. high(char):
+  of ' ' .. '\x7e', '\x80' .. high(char):
     this.input.add(ch)
   else:
     discard
