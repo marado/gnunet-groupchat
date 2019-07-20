@@ -20,7 +20,8 @@ proc processClientMessages(channel: ref CadetChannel,
     let parsed = parse(message)
     if parsed.isSome():
       let parsed = parsed.get()
-      if parsed.kind == Talk and parsed.sender == channel.peer.peerId():
+      if parsed.kind == Talk:
+        parsed.sender = channel.peer.peerId()
         chat.publish(parsed)
 
 proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
@@ -59,7 +60,7 @@ proc processInput(channel: ref CadetChannel, tui: Tui) {.async.} =
       if tui.inputTile.focussed:
         let message = Message(kind: Talk,
                               timestamp: getTime().toUnix(),
-                              sender: channel.peer.peerId(),
+                              sender: "", # FIXME: get our peerID from Transport API
                               content: tui.inputTile.input)
         channel.sendMessage($message)
         tui.inputTile.reset()
