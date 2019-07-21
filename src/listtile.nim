@@ -6,7 +6,6 @@ else:
 
 export tile
 
-# ListTile
 type ListElement* = object
   id: string
   title: string

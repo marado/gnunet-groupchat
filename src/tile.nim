@@ -55,7 +55,6 @@ proc writeLeftAligned*(origin: Point,
   stdout.write(repeat(' ', padding))
   resetAttributes()
 
-# Tile
 type Tile* = ref object of RootObj
   help*: string
   focussed*: bool

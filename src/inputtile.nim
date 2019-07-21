@@ -1,7 +1,6 @@
 import tile, terminal, unicode
 export tile
 
-# InputTile
 type InputTile* = ref object of Tile
   input*: string
 
