@@ -107,6 +107,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
       channel.sendMessage($Message(kind: Info,
                                    timestamp: getTime().toUnix(),
                                    participants: participants))
+      echo(getTime().toUnix(), ": ", peerId, " joined")
       closureScope:
         let channel = channel
         let peerId = peerId
@@ -115,6 +116,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
                                timestamp: getTime().toUnix(),
                                who: peerId))
           chat.channels.delete(chat.channels.find(channel))
+          echo(getTime().toUnix(), ": ", peerId, " left")
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =
