@@ -47,11 +47,9 @@ proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
         tui.participantsTile.addElement(parsed.who,
                                         parsed.who)
         tui.inputTile.present()
-        echo(getTime().toUnix(), ": ", parsed.who, " joined")
       of Leave:
         tui.participantsTile.deleteElement(parsed.who)
         tui.inputTile.present()
-        echo(getTime().toUnix(), ": ", parsed.who, " left")
       of Info:
         for p in parsed.participants:
           tui.participantsTile.addElement(p, p)
