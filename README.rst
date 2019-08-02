@@ -10,7 +10,7 @@ Installation
 Requirements
 ------------
 
-* GNUnet >= 0.11.0 (https://gnunet.org)
+* GNUnet >= 0.11.6 (https://gnunet.org)
 * Nim >= 0.18.0    (https://nim-lang.org)
 
 Install
