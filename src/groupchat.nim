@@ -1,5 +1,5 @@
 import gnunet_nim, gnunet_nim/cadet, message, tui, asyncdispatch, options,
-       times, os, parseopt, tables
+       times, os, parseopt, tables, sequtils
 
 type Client = object
   channel*: ref CadetChannel
@@ -13,7 +13,8 @@ proc newChat*(): Chat =
 
 proc publish*(chat: Chat, message: Message) =
   for c in chat.clients.values():
-    c.channel.sendMessage($message)
+    if c.nick != "":
+      c.channel.sendMessage($message)
 
 proc processClientMessages(channel: ref CadetChannel,
                            chat: Chat) {.async.} =
@@ -43,6 +44,11 @@ proc processClientMessages(channel: ref CadetChannel,
                                timestamp: getTime().toUnix(),
                                who: client.nick))
           chat.clients[peerId] = client
+          let clients = toSeq(chat.clients.values())
+          let participants = clients.map(proc(c: Client): string = c.nick)
+          channel.sendMessage($Message(kind: Info,
+                                       timestamp: getTime().toUnix(),
+                                       participants: participants))
       else:
         discard
     else:
