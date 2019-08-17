@@ -31,7 +31,12 @@ proc processClientMessages(channel: ref CadetChannel,
         parsed.sender = chat.clients.filter(pred)[0].nick
         chat.publish(parsed)
       of Nick:
-        chat.clients.add(Client(channel: channel, nick: parsed.nick))
+        proc op(c: Client): Client =
+          result = c
+          if c.channel == channel:
+            result.nick = parsed.nick
+
+        chat.clients.apply(op)
       else:
         discard
     else:
@@ -114,26 +119,27 @@ proc firstTask(gnunetApp: ref GnunetApplication,
       let (hasChannel, channel) = await cadetPort.channels.read()
       if not hasChannel:
         break
-      let peerId = channel.peer.peerId()
+      proc pred(c: Client): bool = c.channel == channel
+      let nick = chat.clients.filter(pred)[0].nick
       chat.publish(Message(kind: Join,
                            timestamp: getTime().toUnix(),
-                           who: peerId))
+                           who: nick))
       chat.clients.add(Client(channel: channel, nick: channel.peer.peerId()))
       let participants =
         chat.clients.map(proc(c: Client): string = c.channel.peer.peerId())
       channel.sendMessage($Message(kind: Info,
                                    timestamp: getTime().toUnix(),
                                    participants: participants))
-      echo(getTime().toUnix(), ": ", peerId, " joined")
+      echo(getTime().toUnix(), ": ", nick, " joined")
       closureScope:
         let channel = channel
         let peerId = peerId
         proc channelDisconnected(future: Future[void]) =
           chat.publish(Message(kind: Leave,
                                timestamp: getTime().toUnix(),
-                               who: peerId))
+                               who: nick))
           chat.clients.keepIf(proc(c: Client): bool = c.channel != channel)
-          echo(getTime().toUnix(), ": ", peerId, " left")
+          echo(getTime().toUnix(), ": ", nick, " left")
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =
