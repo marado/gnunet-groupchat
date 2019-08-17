@@ -1,4 +1,8 @@
-import json, strutils, options
+## Message format and processing 
+
+import json
+import strutils
+import options
 
 type
   MessageKind* = enum
@@ -19,6 +23,7 @@ type
     timestamp*: int64
 
 proc `$`*(message: Message): string =
+  ## Convert message to json object
   var jsonObject = %* { "kind": ($message.kind).toLowerAscii(),
                         "timestamp": message.timestamp }
   case message.kind

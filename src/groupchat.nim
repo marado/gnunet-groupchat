@@ -1,17 +1,52 @@
-import gnunet_nim, gnunet_nim/cadet, message, tui, asyncdispatch, options,
-       times, os, parseopt, tables
+##     This file is part of GNUnet.
+##     Copyright (C) 2001 - 2019 GNUnet e.V.
+##
+##     GNUnet is free software: you can redistribute it and/or modify it
+##     under the terms of the GNU Affero General Public License as published
+##     by the Free Software Foundation, either version 3 of the License,
+##     or (at your option) any later version.
+##
+##     GNUnet is distributed in the hope that it will be useful, but
+##     WITHOUT ANY WARRANTY; without even the implied warranty of
+##     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+##     Affero General Public License for more details.
+##
+##     You should have received a copy of the GNU Affero General Public License
+##     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+##
+##     SPDX-License-Identifier: AGPL3.0-or-later
+
+##  @author lurchi
+##  @file groupchat.nim
+##  @brief groupchat server and client 
+
+
+import gnunet_nim
+import gnunet_nim/cadet
+import tui
+import os
+import parseopt
+import tables
+import asyncdispatch
+import options
+import times
+import message
 
 type Client = object
+  ## Handle for client using cadet 
   channel*: ref CadetChannel
   nick*: string
 
 type Chat = ref object
+  ## Handle for chat 
   clients*: Table[string, Client]
 
 proc newChat*(): Chat =
+  ## Create a new chat. 
   Chat(clients: initTable[string, Client]())
 
 proc publish*(chat: Chat, message: Message) =
+  ## Publish a message in a chat.
   for c in chat.clients.values():
     c.channel.sendMessage($message)
 
