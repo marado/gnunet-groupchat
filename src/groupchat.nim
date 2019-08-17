@@ -107,7 +107,8 @@ proc processServerMessages(channel: ref CadetChannel, tui: Tui, nick: string) {.
                     " " &
                     parsed.timestamp.fromUnix().local().format("HH:mm:ss")
         if find(parsed.content, nick) != -1:
-          discard execShellCmd("echo -en '\a'");
+          stdout.write("\a")
+          stdout.write("$'\a'")
         tui.conversationTile.addElement("", title, parsed.content)
         tui.inputTile.present()
       of Join:
