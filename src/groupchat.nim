@@ -32,6 +32,7 @@ import asyncdispatch
 import options
 import times
 import sequtils
+import strutils
 
 type Client = object
   ## Handle for client using cadet 
@@ -54,6 +55,7 @@ proc publish*(chat: Chat, message: Message) =
 
 proc processClientMessages(channel: ref CadetChannel,
                            chat: Chat) {.async.} =
+  # Small event loop for incomming messages
   while true:
     let (hasData, message) = await channel.messages.read()
     if not hasData:
@@ -90,7 +92,7 @@ proc processClientMessages(channel: ref CadetChannel,
     else:
       echo(getTime().toUnix(), ": invalid message from ", channel.peer.peerId())
 
-proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
+proc processServerMessages(channel: ref CadetChannel, tui: Tui, nick: string) {.async.} =
   while true:
     let (hasData, message) = await channel.messages.read()
     if not hasData:
@@ -104,6 +106,8 @@ proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
         let title = parsed.sender &
                     " " &
                     parsed.timestamp.fromUnix().local().format("HH:mm:ss")
+        if find(parsed.content, nick) != -1:
+          discard execShellCmd("echo -en '\a'");
         tui.conversationTile.addElement("", title, parsed.content)
         tui.inputTile.present()
       of Join:
@@ -157,7 +161,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
       message.who = nick
     channel.sendMessage($message)
     let tui = initTui()
-    await processServerMessages(channel, tui) or processInput(channel, tui)
+    await processServerMessages(channel, tui, nick) or processInput(channel, tui)
     tui.clean()
   else:
     var chat = newChat()
