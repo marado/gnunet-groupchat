@@ -92,7 +92,9 @@ proc processClientMessages(channel: ref CadetChannel,
     else:
       echo(getTime().toUnix(), ": invalid message from ", channel.peer.peerId())
 
-proc processServerMessages(channel: ref CadetChannel, tui: Tui, nick: string) {.async.} =
+proc processServerMessages(channel: ref CadetChannel,
+                           tui: Tui,
+                           nick: string) {.async.} =
   while true:
     let (hasData, message) = await channel.messages.read()
     if not hasData:
