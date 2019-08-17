@@ -24,13 +24,14 @@
 import gnunet_nim
 import gnunet_nim/cadet
 import tui
+import message
 import os
 import parseopt
 import tables
 import asyncdispatch
 import options
 import times
-import message
+import sequtils
 
 type Client = object
   ## Handle for client using cadet 
@@ -48,7 +49,8 @@ proc newChat*(): Chat =
 proc publish*(chat: Chat, message: Message) =
   ## Publish a message in a chat.
   for c in chat.clients.values():
-    c.channel.sendMessage($message)
+    if c.nick != "":
+      c.channel.sendMessage($message)
 
 proc processClientMessages(channel: ref CadetChannel,
                            chat: Chat) {.async.} =
@@ -78,6 +80,11 @@ proc processClientMessages(channel: ref CadetChannel,
                                timestamp: getTime().toUnix(),
                                who: client.nick))
           chat.clients[peerId] = client
+          let clients = toSeq(chat.clients.values())
+          let participants = clients.map(proc(c: Client): string = c.nick)
+          channel.sendMessage($Message(kind: Info,
+                                       timestamp: getTime().toUnix(),
+                                       participants: participants))
       else:
         discard
     else:
