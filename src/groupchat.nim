@@ -1,15 +1,19 @@
 import gnunet_nim, gnunet_nim/cadet, message, tui, asyncdispatch, options,
        times, os, parseopt, sequtils
 
-type Chat* = ref object
-  channels*: seq[ref CadetChannel]
+type Client = object
+  channel*: ref CadetChannel
+  nick*: string
+
+type Chat = ref object
+  clients*: seq[Client]
 
 proc newChat*(): Chat =
-  Chat(channels: newSeq[ref CadetChannel]())
+  Chat(clients: newSeq[Client]())
 
 proc publish*(chat: Chat, message: Message) =
-  for c in chat.channels:
-    c.sendMessage($message)
+  for c in chat.clients:
+    c.channel.sendMessage($message)
 
 proc processClientMessages(channel: ref CadetChannel,
                            chat: Chat) {.async.} =
@@ -21,9 +25,15 @@ proc processClientMessages(channel: ref CadetChannel,
     if parsed.isSome():
       echo(getTime().toUnix(), ": message from ", channel.peer.peerId(), ": ", message)
       let parsed = parsed.get()
-      if parsed.kind == Talk:
-        parsed.sender = channel.peer.peerId()
+      case parsed.kind
+      of Talk:
+        proc pred(c: Client): bool = c.channel == channel
+        parsed.sender = chat.clients.filter(pred)[0].nick
         chat.publish(parsed)
+      of Nick:
+        chat.clients.add(Client(channel: channel, nick: parsed.nick))
+      else:
+        discard
     else:
       echo(getTime().toUnix(), ": invalid message from ", channel.peer.peerId())
 
@@ -54,6 +64,8 @@ proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
         for p in parsed.participants:
           tui.participantsTile.addElement(p, p)
         tui.inputTile.present()
+      else:
+        discard
 
 proc processInput(channel: ref CadetChannel, tui: Tui) {.async.} =
   while true:
@@ -83,10 +95,15 @@ proc processInput(channel: ref CadetChannel, tui: Tui) {.async.} =
 
 proc firstTask(gnunetApp: ref GnunetApplication,
                server: string,
-               port: string) {.async.} =
+               port: string,
+               nick: string) {.async.} =
   let cadet = await gnunetApp.initCadet()
   if server != "":
     let channel = cadet.createChannel(server, port)
+    if nick != "":
+      channel.sendMessage($Message(kind: Nick,
+                                   timestamp: getTime().toUnix(),
+                                   nick: nick))
     let tui = initTui()
     await processServerMessages(channel, tui) or processInput(channel, tui)
     tui.clean()
@@ -101,9 +118,9 @@ proc firstTask(gnunetApp: ref GnunetApplication,
       chat.publish(Message(kind: Join,
                            timestamp: getTime().toUnix(),
                            who: peerId))
-      chat.channels.add(channel)
+      chat.clients.add(Client(channel: channel, nick: channel.peer.peerId()))
       let participants =
-        chat.channels.map(proc(c: ref CadetChannel): string = c.peer.peerId())
+        chat.clients.map(proc(c: Client): string = c.channel.peer.peerId())
       channel.sendMessage($Message(kind: Info,
                                    timestamp: getTime().toUnix(),
                                    participants: participants))
@@ -115,13 +132,13 @@ proc firstTask(gnunetApp: ref GnunetApplication,
           chat.publish(Message(kind: Leave,
                                timestamp: getTime().toUnix(),
                                who: peerId))
-          chat.channels.delete(chat.channels.find(channel))
+          chat.clients.keepIf(proc(c: Client): bool = c.channel != channel)
           echo(getTime().toUnix(), ": ", peerId, " left")
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =
   var home = getEnv("HOME")
-  var server, port, configfile: string
+  var server, port, nick, configfile: string
   var optParser = initOptParser()
 
   for kind, key, value in optParser.getopt():
@@ -131,6 +148,7 @@ proc main() =
       of "config", "c": configfile = value
       of "server", "s": server = value
       of "port", "p": port = value
+      of "nick", "n": nick = value
     else:
       assert(false)
 
@@ -154,7 +172,7 @@ proc main() =
     echo "Entering server mode."
 
   var gnunetApp = initGnunetApplication(configfile)
-  asyncCheck firstTask(gnunetApp, server, port)
+  asyncCheck firstTask(gnunetApp, server, port, nick)
   
   # Event loop
   while gnunetApp.isAlive():
