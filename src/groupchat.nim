@@ -75,8 +75,6 @@ proc processServerMessages(channel: ref CadetChannel, tui: Tui) {.async.} =
         for p in parsed.participants:
           tui.participantsTile.addElement(p, p)
         tui.inputTile.present()
-      else:
-        discard
 
 proc processInput(channel: ref CadetChannel, tui: Tui) {.async.} =
   while true:
