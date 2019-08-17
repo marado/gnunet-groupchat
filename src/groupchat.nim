@@ -178,7 +178,7 @@ proc firstTask(gnunetApp: ref GnunetApplication,
         let peerId = peerId
         proc channelDisconnected(future: Future[void]) =
           var client: Client
-          assert(chat.clients.take(peerId, client))
+          discard chat.clients.take(peerId, client)
           if client.nick != "":
             chat.publish(Message(kind: Leave,
                                  timestamp: getTime().toUnix(),
