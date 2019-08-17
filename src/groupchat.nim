@@ -1,18 +1,18 @@
 import gnunet_nim, gnunet_nim/cadet, message, tui, asyncdispatch, options,
-       times, os, parseopt, sequtils
+       times, os, parseopt, tables
 
 type Client = object
   channel*: ref CadetChannel
   nick*: string
 
 type Chat = ref object
-  clients*: seq[Client]
+  clients*: Table[string, Client]
 
 proc newChat*(): Chat =
-  Chat(clients: newSeq[Client]())
+  Chat(clients: initTable[string, Client]())
 
 proc publish*(chat: Chat, message: Message) =
-  for c in chat.clients:
+  for c in chat.clients.values():
     c.channel.sendMessage($message)
 
 proc processClientMessages(channel: ref CadetChannel,
@@ -25,18 +25,24 @@ proc processClientMessages(channel: ref CadetChannel,
     if parsed.isSome():
       echo(getTime().toUnix(), ": message from ", channel.peer.peerId(), ": ", message)
       let parsed = parsed.get()
+      let peerId = channel.peer.peerId()
       case parsed.kind
       of Talk:
-        proc pred(c: Client): bool = c.channel == channel
-        parsed.sender = chat.clients.filter(pred)[0].nick
-        chat.publish(parsed)
-      of Nick:
-        proc op(c: Client): Client =
-          result = c
-          if c.channel == channel:
-            result.nick = parsed.nick
-
-        chat.clients.apply(op)
+        let client = chat.clients[peerId]
+        if client.nick != "":
+          parsed.sender = client.nick
+          chat.publish(parsed)
+      of Join:
+        var client = chat.clients[peerId]
+        if client.nick == "":
+          if parsed.who != "":
+            client.nick = parsed.who
+          else:
+            client.nick = peerId
+          chat.publish(Message(kind: Join,
+                               timestamp: getTime().toUnix(),
+                               who: client.nick))
+          chat.clients[peerId] = client
       else:
         discard
     else:
@@ -105,10 +111,11 @@ proc firstTask(gnunetApp: ref GnunetApplication,
   let cadet = await gnunetApp.initCadet()
   if server != "":
     let channel = cadet.createChannel(server, port)
+    var message = Message(kind: Join,
+                          timestamp: getTime().toUnix())
     if nick != "":
-      channel.sendMessage($Message(kind: Nick,
-                                   timestamp: getTime().toUnix(),
-                                   nick: nick))
+      message.who = nick
+    channel.sendMessage($message)
     let tui = initTui()
     await processServerMessages(channel, tui) or processInput(channel, tui)
     tui.clean()
@@ -119,27 +126,20 @@ proc firstTask(gnunetApp: ref GnunetApplication,
       let (hasChannel, channel) = await cadetPort.channels.read()
       if not hasChannel:
         break
-      proc pred(c: Client): bool = c.channel == channel
-      let nick = chat.clients.filter(pred)[0].nick
-      chat.publish(Message(kind: Join,
-                           timestamp: getTime().toUnix(),
-                           who: nick))
-      chat.clients.add(Client(channel: channel, nick: channel.peer.peerId()))
-      let participants =
-        chat.clients.map(proc(c: Client): string = c.channel.peer.peerId())
-      channel.sendMessage($Message(kind: Info,
-                                   timestamp: getTime().toUnix(),
-                                   participants: participants))
-      echo(getTime().toUnix(), ": ", nick, " joined")
+      let peerId = channel.peer.peerId()
+      chat.clients[peerId] = Client(channel: channel)
+      echo(getTime().toUnix(), ": ", peerId, " connected")
       closureScope:
         let channel = channel
         let peerId = peerId
         proc channelDisconnected(future: Future[void]) =
-          chat.publish(Message(kind: Leave,
-                               timestamp: getTime().toUnix(),
-                               who: nick))
-          chat.clients.keepIf(proc(c: Client): bool = c.channel != channel)
-          echo(getTime().toUnix(), ": ", nick, " left")
+          var client: Client
+          assert(chat.clients.take(peerId, client))
+          if client.nick != "":
+            chat.publish(Message(kind: Leave,
+                                 timestamp: getTime().toUnix(),
+                                 who: client.nick))
+          echo(getTime().toUnix(), ": ", peerId, " disconnected")
         processClientMessages(channel, chat).addCallback(channelDisconnected)
 
 proc main() =

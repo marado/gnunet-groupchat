@@ -6,7 +6,6 @@ type
     Join,
     Leave,
     Info,
-    Nick,
 
   Message* = ref object
     case kind*: MessageKind
@@ -17,8 +16,6 @@ type
       who*: string
     of Info:
       participants*: seq[string]
-    of Nick:
-      nick*: string
     timestamp*: int64
 
 proc `$`*(message: Message): string =
@@ -32,8 +29,6 @@ proc `$`*(message: Message): string =
     jsonObject["who"] = % message.who
   of Info:
     jsonObject["participants"] = % message.participants
-  of Nick:
-    jsonObject["nick"] = % message.nick
   $jsonObject
 
 proc parse*(input: string): Option[Message] =
