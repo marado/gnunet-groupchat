@@ -107,8 +107,10 @@ proc processServerMessages(channel: ref CadetChannel, tui: Tui, nick: string) {.
                     " " &
                     parsed.timestamp.fromUnix().local().format("HH:mm:ss")
         if find(parsed.content, nick) != -1:
-          stdout.write("\a")
-          stdout.write("$'\a'")
+          # add new alarming methods here
+          stdout.write("^G")        # on Unix-like, MS-DOS, Windows
+          stdout.write("\a")        # on Linux or Mac OS X
+          stdout.write("$'\a'")     # on bash
         tui.conversationTile.addElement("", title, parsed.content)
         tui.inputTile.present()
       of Join:
