@@ -28,17 +28,19 @@ proc drawVerticalLine*(origin: Point, length: int, symbol = "│") =
 
 proc truncateLeft*(unicode: string, length: int): string =
   assert(length >= 0)
-  if unicode.runeLen() > length:
-    $unicode.toRunes()[(unicode.runeLen() - length) .. ^1]
+  let runes = unicode.toRunes()
+  if runes.len() > length:
+    $runes[(unicode.runeLen() - length) .. ^1]
   else:
-    unicode
+    $runes
 
 proc truncateRight*(unicode: string, length: int): string =
   assert(length >= 0)
-  if unicode.runeLen() > length:
-    $unicode.toRunes()[0 .. (length - 1)]
+  let runes = unicode.toRunes()
+  if runes.len() > length:
+    $runes[0 .. (length - 1)]
   else:
-    unicode
+    $runes
 
 proc writeLeftAligned*(origin: Point,
                        length: int,
