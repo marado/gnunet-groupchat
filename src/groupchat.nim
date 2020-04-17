@@ -235,7 +235,7 @@ proc main() =
     gnunetApp.doWork()
     stdout.flushFile()
 
-  echo "quitting"
+  echo "quitting\r"
   stdout.flushFile()
   stdin.flushFile()
 
