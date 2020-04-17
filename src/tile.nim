@@ -1,10 +1,13 @@
 import terminal, unicode, strutils
 
 type Point* = tuple
+  ## represents coordinates in the terminal
   x: int
   y: int
 
 proc drawHorizontalLine*(origin: Point, length: int, symbol = "─") =
+  ## Draws a horizontal line of ``length`` times ``symbol`` on the screen.
+  ## The left end of the line is ``origin``.
   if origin.x < terminalWidth() and
      origin.x + length > 0 and
      origin.y < terminalHeight() and
@@ -16,6 +19,8 @@ proc drawHorizontalLine*(origin: Point, length: int, symbol = "─") =
       stdout.write(symbol)
 
 proc drawVerticalLine*(origin: Point, length: int, symbol = "│") =
+  ## Draws a vertical line of ``length`` times ``symbol`` on the screen.
+  ## The top end of the line is ``origin``
   if origin.y < terminalHeight() and
      origin.y + length > 0 and
      origin.x < terminalWidth() and
@@ -58,6 +63,9 @@ proc writeLeftAligned*(origin: Point,
   resetAttributes()
 
 type Tile* = ref object of RootObj
+  ## A generic type representing a tile in a terminal. Contains a ``help``
+  ## string to be presented to users and a ``focussed`` flag indicating the
+  ## tile's focus status.
   help*: string
   focussed*: bool
 
